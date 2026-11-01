@@ -1,0 +1,87 @@
+CREATE TABLE users (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ name VARCHAR(120) NOT NULL,
+ email VARCHAR(190) NULL,
+ role ENUM('admin','worker') NOT NULL DEFAULT 'worker',
+ password_hash VARCHAR(255) NULL,
+ active TINYINT(1) NOT NULL DEFAULT 1,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE KEY unique_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE worker_invites (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ user_id INT UNSIGNED NOT NULL,
+ token_hash CHAR(64) NOT NULL UNIQUE,
+ expires_at DATETIME NOT NULL,
+ used_at DATETIME NULL,
+ FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE projects (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ name VARCHAR(160) NOT NULL,
+ client VARCHAR(160) NOT NULL DEFAULT '',
+ total_units INT UNSIGNED NOT NULL DEFAULT 0,
+ completed_units INT UNSIGNED NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE reports (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ user_id INT UNSIGNED NOT NULL,
+ type ENUM('expense','installation','delivery','receiving') NOT NULL,
+ status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+ project_id INT UNSIGNED NULL,
+ amount DECIMAL(12,2) NULL,
+ category VARCHAR(100) NOT NULL DEFAULT '',
+ notes TEXT NULL,
+ ai_status ENUM('not_configured','completed','failed') NOT NULL DEFAULT 'not_configured',
+ ai_data MEDIUMTEXT NULL,
+ ai_error VARCHAR(255) NULL,
+ email_status ENUM('not_configured','sent','failed') NOT NULL DEFAULT 'not_configured',
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY (user_id) REFERENCES users(id),
+ FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+ INDEX report_date (created_at), INDEX report_status (status), INDEX report_type (type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE report_photos (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ report_id INT UNSIGNED NOT NULL,
+ filename VARCHAR(100) NOT NULL,
+ mime VARCHAR(50) NOT NULL,
+ sha256 CHAR(64) NOT NULL,
+ FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE,
+ INDEX photo_hash (sha256)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE audit_log (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ actor_id INT UNSIGNED NOT NULL,
+ report_id INT UNSIGNED NULL,
+ action VARCHAR(100) NOT NULL,
+ details TEXT NULL,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (actor_id) REFERENCES users(id),
+ FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE worker_devices (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ user_id INT UNSIGNED NOT NULL,
+ token_hash CHAR(64) NOT NULL UNIQUE,
+ expires_at DATETIME NOT NULL,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE login_attempts (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ ip_hash CHAR(64) NOT NULL,
+ attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ INDEX attempts_lookup (ip_hash, attempted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- First worker; administrators can add more from the dashboard.
+INSERT INTO users (name,role) VALUES ('Sajjad','worker');
