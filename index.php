@@ -17,6 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($user && $user['password_hash'] && password_verify((string)($_POST['password'] ?? ''), $user['password_hash'])) {
         session_regenerate_id(true); $_SESSION['user_id'] = $user['id'];
         $q = db()->prepare('DELETE FROM login_attempts WHERE ip_hash=?'); $q->execute([$ipHash]);
+        $return = (string)($_SESSION['after_admin_login'] ?? ''); unset($_SESSION['after_admin_login']);
+        if (preg_match('/^email_action\.php\?id=[1-9][0-9]*&action=(review|approve|view)$/D', $return)) redirect($return);
         redirect('admin.php');
     }
     flash('Incorrect email or password.', 'error'); redirect('index.php');

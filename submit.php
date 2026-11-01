@@ -45,6 +45,30 @@ try {
 // The report is committed before external services are called: their failure cannot lose a submission.
 if (function_exists('set_time_limit')) @set_time_limit(120);
 try { [$aiStatus, $aiData, $aiError] = analyze_report($type, $photos); } catch (Throwable $ex) { $aiStatus='failed'; $aiData=null; $aiError='Analysis failed unexpectedly.'; }
-try { $emailStatus = send_report_email($id, $user, $type, $photos, $aiData); } catch (Throwable $ex) { $emailStatus='failed'; }
-try { $q = db()->prepare('UPDATE reports SET ai_status=?,ai_data=?,ai_error=?,email_status=? WHERE id=?'); $q->execute([$aiStatus,$aiData,$aiError,$emailStatus,$id]); } catch (Throwable $ex) { error_log('Could not record processing status for report ' . $id); }
+$decision = auto_approval_decision($type, $aiStatus, $aiData, count($photos));
+// Serialize with management actions and never override an administrator's decision.
+try {
+    $pdo->beginTransaction();
+    $q=$pdo->prepare('SELECT status,amount,category,ai_status FROM reports WHERE id=? FOR UPDATE'); $q->execute([$id]); $current=$q->fetch();
+    if (!$current) throw new RuntimeException('Report not found.');
+    $q=$pdo->prepare("SELECT COUNT(*) FROM audit_log WHERE report_id=? AND action='review updated'"); $q->execute([$id]); $wasReviewed=(int)$q->fetchColumn()>0;
+    if ($current['ai_status']==='not_configured') {
+        $q=$pdo->prepare('UPDATE reports SET ai_status=?,ai_data=?,ai_error=? WHERE id=?'); $q->execute([$aiStatus,$aiData,$aiError,$id]);
+        if ($decision && $current['status']==='pending' && !$wasReviewed) {
+            $q=$pdo->prepare("UPDATE reports SET status='approved',amount=?,category=? WHERE id=?"); $q->execute([$decision['amount'],$decision['category'],$id]);
+            audit((int)$user['id'],$id,'AI auto-approved',json_encode(['source'=>'Gemini','amount'=>$decision['amount'],'category'=>$decision['category']],JSON_UNESCAPED_UNICODE));
+        }
+    }
+    $pdo->commit();
+} catch (Throwable $ex) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    error_log('Could not store analysis for report ' . $id);
+}
+try {
+    // Read the committed outcome: the email must never claim approval that was not saved.
+    $q=db()->prepare('SELECT r.status,r.amount,r.category,r.ai_data,r.ai_status,p.client,(SELECT a.action FROM audit_log a WHERE a.report_id=r.id AND a.action IN (\'AI auto-approved\',\'review updated\') ORDER BY a.id DESC LIMIT 1) last_decision FROM reports r LEFT JOIN projects p ON p.id=r.project_id WHERE r.id=?'); $q->execute([$id]); $outcome=$q->fetch();
+    if ($outcome) $outcome['photo_count']=count($photos);
+    $emailStatus=$outcome ? send_report_email($id,$user,$type,$photos,$outcome['ai_data'],$outcome) : 'failed';
+    $q=db()->prepare('UPDATE reports SET email_status=? WHERE id=?'); $q->execute([$emailStatus,$id]);
+} catch (Throwable $ex) { error_log('Could not send or record notification for report ' . $id); }
 flash('Report sent successfully. Thank you!'); redirect('worker.php');
