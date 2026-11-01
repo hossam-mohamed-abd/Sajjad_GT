@@ -25,16 +25,25 @@ try {
         $q = $pdo->prepare("INSERT INTO users (name,email,role) VALUES (?,?,'worker')"); $q->execute([$name,$email ?: null]);
         audit((int)$user['id'], null, 'worker added', $name); flash('Worker added. Create a device link to give them access.');
     } elseif ($action === 'invite') {
-        $id = (int)($_POST['worker_id'] ?? 0); $q = $pdo->prepare("SELECT name FROM users WHERE id=? AND role='worker' AND active=1"); $q->execute([$id]); $name = $q->fetchColumn();
+        $id = (int)($_POST['worker_id'] ?? 0); $token = bin2hex(random_bytes(32));
+        $pdo->beginTransaction();
+        $q=$pdo->prepare("SELECT name FROM users WHERE id=? AND role='worker' AND active=1 FOR UPDATE"); $q->execute([$id]); $name=$q->fetchColumn();
         if (!$name) throw new RuntimeException('Worker not found.');
-        $token = bin2hex(random_bytes(32)); $pdo->beginTransaction();
-        $q=$pdo->prepare('DELETE FROM worker_invites WHERE user_id=? AND used_at IS NULL'); $q->execute([$id]);
-        $q=$pdo->prepare('INSERT INTO worker_invites (user_id,token_hash,expires_at) VALUES (?,?,DATE_ADD(NOW(), INTERVAL 7 DAY))'); $q->execute([$id,hash('sha256',$token)]);
-        audit((int)$user['id'],null,'device invitation created',(string)$name); $pdo->commit();
-        $_SESSION['invite_link'] = app_url('invite.php?token=' . $token); flash('One-time link created. Open it on the worker’s own device within 7 days.');
+        // Replacing a link also signs out all previously connected devices.
+        $q=$pdo->prepare('DELETE FROM worker_devices WHERE user_id=?'); $q->execute([$id]);
+        $q=$pdo->prepare('DELETE FROM worker_invites WHERE user_id=?'); $q->execute([$id]);
+        $q=$pdo->prepare('INSERT INTO worker_invites (user_id,token_hash,expires_at) VALUES (?,?,NULL)'); $q->execute([$id,hash('sha256',$token)]);
+        audit((int)$user['id'],null,'worker access link created or replaced',(string)$name); $pdo->commit();
+        $_SESSION['invite_link'] = app_url('invite.php?token=' . $token); flash('Permanent link created. Save it and share it privately with the worker.');
     } elseif ($action === 'revoke') {
-        $id=(int)($_POST['worker_id'] ?? 0); $q=$pdo->prepare("SELECT name FROM users WHERE id=? AND role='worker'"); $q->execute([$id]); $name=$q->fetchColumn(); if (!$name) throw new RuntimeException('Worker not found.');
-        $pdo->beginTransaction(); $q=$pdo->prepare('DELETE FROM worker_devices WHERE user_id=?'); $q->execute([$id]); $q=$pdo->prepare('DELETE FROM worker_invites WHERE user_id=? AND used_at IS NULL'); $q->execute([$id]); audit((int)$user['id'],null,'worker devices revoked',(string)$name); $pdo->commit(); flash('All worker devices and unused links have been revoked.');
+        $id=(int)($_POST['worker_id'] ?? 0);
+        $pdo->beginTransaction();
+        $q=$pdo->prepare("SELECT name FROM users WHERE id=? AND role='worker' FOR UPDATE"); $q->execute([$id]); $name=$q->fetchColumn();
+        if (!$name) throw new RuntimeException('Worker not found.');
+        $q=$pdo->prepare('DELETE FROM worker_devices WHERE user_id=?'); $q->execute([$id]);
+        $q=$pdo->prepare('DELETE FROM worker_invites WHERE user_id=?'); $q->execute([$id]);
+        audit((int)$user['id'],null,'worker access stopped',(string)$name); $pdo->commit();
+        unset($_SESSION['invite_link']); flash('Worker link stopped and all connected devices signed out.');
     } elseif ($action === 'project_add' || $action === 'project_update') {
         $name=trim((string)($_POST['name'] ?? '')); $client=trim((string)($_POST['client'] ?? '')); $total=filter_var($_POST['total_units'] ?? null,FILTER_VALIDATE_INT); $done=filter_var($_POST['completed_units'] ?? null,FILTER_VALIDATE_INT);
         if (!$name || strlen($name)>160 || strlen($client)>160 || $total===false || $done===false || $total<0 || $done<0 || $done>$total || $total>1000000) throw new RuntimeException('Check project details. Completed units cannot exceed total units.');

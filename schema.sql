@@ -13,7 +13,7 @@ CREATE TABLE worker_invites (
  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
  user_id INT UNSIGNED NOT NULL,
  token_hash CHAR(64) NOT NULL UNIQUE,
- expires_at DATETIME NOT NULL,
+ expires_at DATETIME NULL DEFAULT NULL,
  used_at DATETIME NULL,
  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -72,7 +72,7 @@ CREATE TABLE worker_devices (
  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
  user_id INT UNSIGNED NOT NULL,
  token_hash CHAR(64) NOT NULL UNIQUE,
- expires_at DATETIME NOT NULL,
+ expires_at DATETIME NULL DEFAULT NULL,
  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -92,3 +92,6 @@ CREATE TABLE app_settings (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 INSERT INTO app_settings (setting_key, setting_value) VALUES ('notification_email', 'hossam545mohamed@gmail.com');
 INSERT INTO app_settings (setting_key, setting_value) VALUES ('worker_audio_enabled', '1');
+
+-- New installations already use permanent worker access; no legacy rows need migration.
+INSERT INTO app_settings (setting_key, setting_value) VALUES ('migration_003_permanent_worker_links', 'applied');

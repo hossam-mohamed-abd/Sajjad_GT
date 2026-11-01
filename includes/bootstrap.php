@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/worker_access.php';
 $root = dirname(__DIR__);
 if (is_file($root . '/.env')) {
     foreach (file($root . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
@@ -42,11 +43,15 @@ function csrf(): string { if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2
 function csrf_field(): string { return '<input type="hidden" name="csrf" value="' . e(csrf()) . '">'; }
 function check_csrf(): void { if (!hash_equals($_SESSION['csrf'] ?? '', (string)($_POST['csrf'] ?? ''))) { http_response_code(403); exit('Invalid session token. Please refresh and try again.'); } }
 function flash(string $message, string $kind = 'success'): void { $_SESSION['flash'] = [$message, $kind]; }
+/** Browsers may cap or clear cookies; the server-side device and access link do not expire. */
+function set_worker_device_cookie(string $token): void {
+    setcookie('worker_device', $token, ['expires'=>time()+365*86400, 'path'=>cookie_path(), 'httponly'=>true, 'secure'=>!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off', 'samesite'=>'Lax']);
+}
 function current_user(): ?array {
     if (empty($_SESSION['user_id']) && !empty($_COOKIE['worker_device'])) {
         $token = (string)$_COOKIE['worker_device'];
         if (preg_match('/^[a-f0-9]{64}$/', $token)) {
-            $q = db()->prepare("SELECT d.user_id FROM worker_devices d JOIN users u ON u.id=d.user_id WHERE d.token_hash=? AND d.expires_at>NOW() AND u.active=1 AND u.role='worker'");
+            $q = db()->prepare(worker_device_lookup_sql());
             $q->execute([hash('sha256', $token)]); $id = $q->fetchColumn();
             if ($id) { session_regenerate_id(true); $_SESSION['user_id'] = (int)$id; $_SESSION['device_hash'] = hash('sha256', $token); }
         }
@@ -56,9 +61,12 @@ function current_user(): ?array {
     $user = $q->fetch() ?: null;
     if ($user && $user['role'] === 'worker') {
         $deviceHash = $_SESSION['device_hash'] ?? '';
-        $device = db()->prepare('SELECT id FROM worker_devices WHERE user_id=? AND token_hash=? AND expires_at>NOW()');
+        $device = db()->prepare(worker_session_device_sql());
         $device->execute([$user['id'], $deviceHash]);
         if (!$device->fetchColumn()) { unset($_SESSION['user_id'], $_SESSION['device_hash']); return null; }
+        // Refresh the browser cookie on activity; its storage lifetime is ultimately browser-controlled.
+        $cookie=(string)($_COOKIE['worker_device'] ?? '');
+        if (preg_match('/^[a-f0-9]{64}$/', $cookie) && hash_equals($deviceHash,hash('sha256',$cookie))) set_worker_device_cookie($cookie);
     }
     return $user;
 }
