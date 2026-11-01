@@ -1,18 +1,23 @@
 <?php
 require __DIR__ . '/includes/bootstrap.php';
 $user = require_role('worker');
+// Default to on when upgrading a pre-settings installation.
+$workerAudioEnabled = true;
+try { $q = db()->prepare('SELECT setting_value FROM app_settings WHERE setting_key=?'); $q->execute(['worker_audio_enabled']); $soundValue = $q->fetchColumn(); $workerAudioEnabled = $soundValue === false || $soundValue === '1'; }
+catch (PDOException $e) { /* Keep the default until the migration is run. */ }
 $q = db()->prepare('SELECT r.*, (SELECT COUNT(*) FROM report_photos p WHERE p.report_id=r.id) photo_count FROM reports r WHERE r.user_id=? ORDER BY r.created_at DESC LIMIT 12'); $q->execute([$user['id']]); $reports = $q->fetchAll();
 page_start('My field reports', $user, 'worker');
 ?>
 <div class="heading-row"><div><div class="eyebrow">YOUR FIELD WORKSPACE</div><h1>Hello, <?=e($user['name'])?> <span class="wave">✳</span></h1><p>Capture your work. We’ll take care of the rest.</p></div><span class="pill light"><span class="live-dot"></span> Ready to report</span></div>
 <div class="worker-layout"><section class="panel report-compose"><div class="section-heading"><div><span class="step-label">01 / NEW REPORT</span><h2>What are you reporting?</h2><p>Choose an activity, add photos, and send.</p></div><div class="section-icon">✦</div></div>
-<form action="submit.php" method="post" enctype="multipart/form-data" id="worker-form"><?=csrf_field()?>
+<form action="submit.php" method="post" enctype="multipart/form-data" id="worker-form" data-audio-enabled="<?=$workerAudioEnabled ? '1' : '0'?>"><?=csrf_field()?>
 <div class="activity-grid">
 <label class="activity expense"><input type="radio" name="type" value="expense" required><span class="activity-icon"><img src="assets/icons/expense.svg" alt=""></span><strong>Expenses</strong><small>Receipts & purchases</small></label>
 <label class="activity install"><input type="radio" name="type" value="installation"><span class="activity-icon"><img src="assets/icons/installation.svg" alt=""></span><strong>Installation</strong><small>Completed work</small></label>
 <label class="activity delivery"><input type="radio" name="type" value="delivery"><span class="activity-icon"><img src="assets/icons/delivery.svg" alt=""></span><strong>Delivery</strong><small>Materials delivered</small></label>
 <label class="activity receiving"><input type="radio" name="type" value="receiving"><span class="activity-icon"><img src="assets/icons/receiving.svg" alt=""></span><strong>Receiving</strong><small>Goods received</small></label>
 </div>
+<?php if ($workerAudioEnabled): ?><div class="audio-assist"><span>🔊 &nbsp; Tap an activity to hear what to do.</span><button type="button" id="replay-activity" class="replay-button" hidden>▶ &nbsp; Play again</button><span id="audio-status" role="status"></span></div><?php endif; ?>
 <div class="upload-area"><div class="upload-icon">◎</div><h3>Add your photos</h3><p>Up to 5 photos · JPG, PNG or WEBP · 5 MB each</p><label class="button primary file-button">◎ &nbsp; Take a photo<input id="camera" type="file" name="photos[]" accept="image/jpeg,image/png,image/webp" capture="environment"></label> <label class="button secondary file-button">＋ &nbsp; Choose photos<input id="photos" type="file" name="photos[]" accept="image/jpeg,image/png,image/webp" multiple></label><div id="file-count" class="file-count">No photos selected</div></div><button class="button primary wide send-button" type="submit">Send report <span>↗</span></button><div class="privacy-note">♢ &nbsp; Your report is sent securely to management.</div></form></section>
 <aside><div class="panel recent-panel"><div class="section-heading"><div><span class="step-label">YOUR ACTIVITY</span><h2>Recent reports</h2></div><span class="count-badge"><?=count($reports)?></span></div><?php if (!$reports): ?><div class="empty"><div>◌</div><strong>Nothing here yet</strong><p>Your submitted reports will appear here.</p></div><?php else: foreach ($reports as $r): ?><div class="recent-item"><div class="small-icon <?=e($r['type'])?>"><?= ['expense'=>'▤','installation'=>'⌂','delivery'=>'▱','receiving'=>'▣'][$r['type']] ?></div><div class="recent-text"><strong><?=e(ucfirst($r['type']))?></strong><small><?=e(date('d M Y · H:i', strtotime($r['created_at'])))?> · <?=e((string)$r['photo_count'])?> photo(s)</small></div><span class="status <?=e($r['status'])?>"><?=e($r['status'])?></span></div><?php endforeach; endif; ?></div><div class="help-card"><span>✧</span><div><strong>Simple by design.</strong><p>Pick an activity, take your photos, and send. No typing needed.</p></div></div></aside></div>
 <?php page_end(); ?>

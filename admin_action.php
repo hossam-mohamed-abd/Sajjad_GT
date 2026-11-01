@@ -3,7 +3,23 @@ require __DIR__ . '/includes/bootstrap.php';
 $user = require_role('admin'); if ($_SERVER['REQUEST_METHOD'] !== 'POST') redirect('admin.php'); check_csrf();
 $action = (string)($_POST['action'] ?? ''); $pdo = db();
 try {
-    if ($action === 'worker_add') {
+    if ($action === 'worker_audio') {
+        $enabled = (string)($_POST['enabled'] ?? '');
+        if (!in_array($enabled, ['0', '1'], true)) throw new RuntimeException('Invalid sound setting.');
+        $pdo->beginTransaction();
+        $q=$pdo->prepare('SELECT setting_value FROM app_settings WHERE setting_key=? FOR UPDATE'); $q->execute(['worker_audio_enabled']); $previous=$q->fetchColumn();
+        $q=$pdo->prepare('INSERT INTO app_settings (setting_key, setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)'); $q->execute(['worker_audio_enabled', $enabled]);
+        audit((int)$user['id'], null, 'worker audio updated', 'From: ' . ($previous === false ? 'default on' : ($previous === '1' ? 'on' : 'off')) . '; to: ' . ($enabled === '1' ? 'on' : 'off'));
+        $pdo->commit(); flash('Worker voice instructions are ' . ($enabled === '1' ? 'on' : 'off') . '. Open or refresh the worker page to apply.');
+    } elseif ($action === 'notification_email') {
+        $email = trim((string)($_POST['notification_email'] ?? ''));
+        if (strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Enter a valid notification email address.');
+        $pdo->beginTransaction();
+        $q = $pdo->prepare('SELECT setting_value FROM app_settings WHERE setting_key=? FOR UPDATE'); $q->execute(['notification_email']); $old = $q->fetchColumn();
+        $q = $pdo->prepare('INSERT INTO app_settings (setting_key, setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)'); $q->execute(['notification_email', $email]);
+        audit((int)$user['id'], null, 'notification email updated', 'From: ' . ($old ?: '(not set)') . '; to: ' . $email);
+        $pdo->commit(); flash('Notification email updated. New reports will be sent to this address.');
+    } elseif ($action === 'worker_add') {
         $name = trim((string)($_POST['name'] ?? '')); $email = trim((string)($_POST['email'] ?? ''));
         if ($name === '' || strlen($name)>120 || ($email && !filter_var($email,FILTER_VALIDATE_EMAIL))) throw new RuntimeException('Enter a valid worker name and optional email.');
         $q = $pdo->prepare("INSERT INTO users (name,email,role) VALUES (?,?,'worker')"); $q->execute([$name,$email ?: null]);
@@ -29,4 +45,4 @@ try {
     if ($pdo->inTransaction()) $pdo->rollBack();
     flash($e instanceof RuntimeException ? $e->getMessage() : 'Could not complete the action. Check for duplicate values.', 'error');
 }
-redirect('admin.php' . (in_array($action,['worker_add','invite','revoke'],true) ? '#team' : '#projects'));
+redirect('admin.php' . ($action === 'worker_audio' ? '#sound-settings' : ($action === 'notification_email' ? '#notifications' : (in_array($action,['worker_add','invite','revoke'],true) ? '#team' : '#projects'))));

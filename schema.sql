@@ -85,3 +85,10 @@ CREATE TABLE login_attempts (
 
 -- First worker; administrators can add more from the dashboard.
 INSERT INTO users (name,role) VALUES ('Sajjad','worker');
+
+CREATE TABLE app_settings (
+ setting_key VARCHAR(100) PRIMARY KEY,
+ setting_value VARCHAR(255) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+INSERT INTO app_settings (setting_key, setting_value) VALUES ('notification_email', 'hossam545mohamed@gmail.com');
+INSERT INTO app_settings (setting_key, setting_value) VALUES ('worker_audio_enabled', '1');

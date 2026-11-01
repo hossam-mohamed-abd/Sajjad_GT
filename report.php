@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 $q=$pdo->prepare('SELECT * FROM report_photos WHERE report_id=? ORDER BY id'); $q->execute([$id]); $photos=$q->fetchAll(); $projects=$pdo->query('SELECT id,name FROM projects ORDER BY name')->fetchAll();
 $q=$pdo->prepare('SELECT a.*,u.name FROM audit_log a JOIN users u ON u.id=a.actor_id WHERE a.report_id=? ORDER BY a.created_at DESC,a.id DESC'); $q->execute([$id]); $history=$q->fetchAll();
 $ai=$report['ai_data'] ? json_decode($report['ai_data'],true) : null;
+if (is_array($ai)) foreach (['summary','merchant','receipt_date','currency','category','image_quality','uncertainty'] as $field) if (is_string($ai[$field] ?? null)) $ai[$field]=clean_ai_text($ai[$field]);
 page_start('Report review',$user,'dashboard');
 ?>
 <a class="back-link" href="admin.php#reports">← Back to reports</a><div class="heading-row"><div><div class="eyebrow">FIELD REPORT / #<?=e((string)$id)?></div><h1><?=e(ucfirst($report['type']))?> report</h1><p>Submitted by <?=e($report['worker'])?> · <?=e(date('d M Y, H:i',strtotime($report['created_at'])))?></p></div><span class="status <?=e($report['status'])?>"><?=e($report['status'])?></span></div>
