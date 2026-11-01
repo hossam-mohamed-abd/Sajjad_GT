@@ -39,6 +39,25 @@ function auto_approval_decision(string $type, string $aiStatus, ?string $aiJson,
     if (!in_array($type,['installation','delivery','receiving'],true)) return null;
     return ['amount'=>null,'category'=>''];
 }
+/** Prefill empty, untouched management fields with clearly labelled AI suggestions. */
+function review_field_values(array $report, ?array $ai): array {
+    $result=['amount'=>(string)($report['amount'] ?? ''), 'category'=>(string)($report['category'] ?? ''), 'notes'=>(string)($report['notes'] ?? ''), 'prefilled'=>false];
+    if (!$ai || ($report['last_decision'] ?? null) === 'review updated') return $result;
+    if (($report['type'] ?? '') === 'expense' && $result['amount'] === '' && strtoupper(trim((string)($ai['currency'] ?? ''))) === 'AED' && isset($ai['amount']) && is_numeric($ai['amount'])) {
+        $value=(float)$ai['amount'];
+        if ($value >= 0 && $value <= 9999999999 && abs($value-round($value,2)) < 0.000001) { $result['amount']=number_format($value,2,'.',''); $result['prefilled']=true; }
+    }
+    if (($report['type'] ?? '') === 'expense' && $result['category'] === '' && is_string($ai['category'] ?? null)) {
+        $category=clean_ai_text($ai['category'],100);
+        if (strlen($category)>100) $category=preg_replace('/^(.{1,25}).*$/us','$1',$category) ?? '';
+        if ($category!=='') { $result['category']=$category; $result['prefilled']=true; }
+    }
+    if ($result['notes'] === '' && is_string($ai['summary'] ?? null)) {
+        $notes=clean_ai_text($ai['summary'],500);
+        if ($notes!=='') { $result['notes']=$notes; $result['prefilled']=true; }
+    }
+    return $result;
+}
 function mb_safe_substr(string $text, int $length): string { return function_exists('mb_substr') ? mb_substr($text, 0, $length, 'UTF-8') : substr($text, 0, $length); }
 /** Strip common Markdown markers; output is always escaped by the HTML template. */
 function clean_ai_text(string $value, int $length = 500): string {

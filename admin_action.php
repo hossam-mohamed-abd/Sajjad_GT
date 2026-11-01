@@ -29,9 +29,9 @@ try {
         if (!$name) throw new RuntimeException('Worker not found.');
         $token = bin2hex(random_bytes(32)); $pdo->beginTransaction();
         $q=$pdo->prepare('DELETE FROM worker_invites WHERE user_id=? AND used_at IS NULL'); $q->execute([$id]);
-        $q=$pdo->prepare('INSERT INTO worker_invites (user_id,token_hash,expires_at) VALUES (?,?,DATE_ADD(NOW(), INTERVAL 24 HOUR))'); $q->execute([$id,hash('sha256',$token)]);
+        $q=$pdo->prepare('INSERT INTO worker_invites (user_id,token_hash,expires_at) VALUES (?,?,DATE_ADD(NOW(), INTERVAL 7 DAY))'); $q->execute([$id,hash('sha256',$token)]);
         audit((int)$user['id'],null,'device invitation created',(string)$name); $pdo->commit();
-        $_SESSION['invite_link'] = app_url('invite.php?token=' . $token); flash('One-time link created. Open it on the worker’s own device within 24 hours.');
+        $_SESSION['invite_link'] = app_url('invite.php?token=' . $token); flash('One-time link created. Open it on the worker’s own device within 7 days.');
     } elseif ($action === 'revoke') {
         $id=(int)($_POST['worker_id'] ?? 0); $q=$pdo->prepare("SELECT name FROM users WHERE id=? AND role='worker'"); $q->execute([$id]); $name=$q->fetchColumn(); if (!$name) throw new RuntimeException('Worker not found.');
         $pdo->beginTransaction(); $q=$pdo->prepare('DELETE FROM worker_devices WHERE user_id=?'); $q->execute([$id]); $q=$pdo->prepare('DELETE FROM worker_invites WHERE user_id=? AND used_at IS NULL'); $q->execute([$id]); audit((int)$user['id'],null,'worker devices revoked',(string)$name); $pdo->commit(); flash('All worker devices and unused links have been revoked.');

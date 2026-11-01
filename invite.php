@@ -3,12 +3,13 @@ require __DIR__ . '/includes/bootstrap.php';
 $token = (string)($_POST['token'] ?? $_GET['token'] ?? '');
 if (!preg_match('/^[a-f0-9]{64}$/', $token)) { http_response_code(400); exit('Invalid invitation.'); }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    $q=db()->prepare("SELECT u.name FROM worker_invites i JOIN users u ON u.id=i.user_id WHERE i.token_hash=? AND i.used_at IS NULL AND i.expires_at>NOW() AND u.active=1 AND u.role='worker'");
-    $q->execute([hash('sha256',$token)]); $name=$q->fetchColumn();
-    if (!$name) { http_response_code(403); exit('This invitation is invalid, expired or already used. Ask your administrator for a new one.'); }
+    $q=db()->prepare("SELECT u.name,i.expires_at FROM worker_invites i JOIN users u ON u.id=i.user_id WHERE i.token_hash=? AND i.used_at IS NULL AND i.expires_at>NOW() AND u.active=1 AND u.role='worker'");
+    $q->execute([hash('sha256',$token)]); $invitation=$q->fetch();
+    if (!$invitation) { http_response_code(403); exit('This invitation is invalid, expired or already used. Ask your administrator for a new one.'); }
+    $name=$invitation['name']; $expiry=$invitation['expires_at'];
     page_start('Connect your device');
     ?>
-    <div class="auth-card"><img class="auth-logo" src="assets/global-trading.png" alt="Global Trading"><div class="eyebrow">SECURE DEVICE SETUP</div><h1>Hello, <?=e((string)$name)?>.</h1><p>Connect this device to start sending field reports. Use only your own device.</p><form method="post"><?=csrf_field()?><input type="hidden" name="token" value="<?=e($token)?>"><button class="button primary wide">Connect my device <span>→</span></button></form><div class="auth-foot">This one-time link expires in 24 hours.</div></div>
+    <div class="auth-card"><img class="auth-logo" src="assets/global-trading.png" alt="Global Trading"><div class="eyebrow">SECURE DEVICE SETUP</div><h1>Hello, <?=e((string)$name)?>.</h1><p>Connect this device to start sending field reports. Use only your own device.</p><form method="post"><?=csrf_field()?><input type="hidden" name="token" value="<?=e($token)?>"><button class="button primary wide">Connect my device <span>→</span></button></form><div class="auth-foot">This one-time link expires on <?=e(date('d M Y, H:i',strtotime($expiry)))?>.</div></div>
     <?php
     page_end(false); exit;
 }

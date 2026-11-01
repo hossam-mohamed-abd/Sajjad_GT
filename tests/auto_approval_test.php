@@ -33,4 +33,17 @@ check(str_contains($html,'AI approved · counted') && str_contains($html,'COUNTE
 check(str_contains($html,'Multiple expense photos need a manual total check.'),'multi-photo review reason is shown');
 [$html,$text]=report_email_content(19,['name'=>'Sajjad'],'expense',null,['status'=>'pending','amount'=>null,'ai_status'=>'failed','photo_count'=>1]);
 check(str_contains($html,'AI analysis was unavailable') && str_contains($html,'TOTAL · NOT COUNTED'),'failed analysis is not counted');
+$report=['type'=>'expense','amount'=>null,'category'=>'','notes'=>'','last_decision'=>null];
+$ai=['amount'=>200,'currency'=>'AED','category'=>'Fuel','summary'=>'Fuel purchase'];
+$fields=review_field_values($report,$ai);
+check($fields['amount']==='200.00' && $fields['category']==='Fuel' && $fields['notes']==='Fuel purchase' && $fields['prefilled'],'unreviewed report prefills AI fields');
+$existing=array_replace($report,['amount'=>'175.00','category'=>'Travel','notes'=>'Already edited']);
+$fields=review_field_values($existing,$ai);
+check($fields['amount']==='175.00' && $fields['category']==='Travel' && $fields['notes']==='Already edited','existing saved management values win');
+$fields=review_field_values(array_replace($report,['last_decision'=>'review updated']),$ai);
+check($fields['amount']==='' && $fields['category']==='' && $fields['notes']==='' && !$fields['prefilled'],'intentionally cleared management fields stay cleared');
+$fields=review_field_values($report,array_replace($ai,['currency'=>'USD']));
+check($fields['amount']==='' && $fields['category']==='Fuel','non-AED suggestions are not silently treated as AED');
+$fields=review_field_values($report,array_replace($ai,['amount'=>12.345]));
+check($fields['amount']==='','do not silently round an invalid AI amount');
 echo "Auto-approval and email content tests passed.\n";

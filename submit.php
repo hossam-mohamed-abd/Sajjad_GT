@@ -49,14 +49,17 @@ $decision = auto_approval_decision($type, $aiStatus, $aiData, count($photos));
 // Serialize with management actions and never override an administrator's decision.
 try {
     $pdo->beginTransaction();
-    $q=$pdo->prepare('SELECT status,amount,category,ai_status FROM reports WHERE id=? FOR UPDATE'); $q->execute([$id]); $current=$q->fetch();
+    $q=$pdo->prepare('SELECT status,amount,category,notes,ai_status FROM reports WHERE id=? FOR UPDATE'); $q->execute([$id]); $current=$q->fetch();
     if (!$current) throw new RuntimeException('Report not found.');
     $q=$pdo->prepare("SELECT COUNT(*) FROM audit_log WHERE report_id=? AND action='review updated'"); $q->execute([$id]); $wasReviewed=(int)$q->fetchColumn()>0;
     if ($current['ai_status']==='not_configured') {
         $q=$pdo->prepare('UPDATE reports SET ai_status=?,ai_data=?,ai_error=? WHERE id=?'); $q->execute([$aiStatus,$aiData,$aiError,$id]);
         if ($decision && $current['status']==='pending' && !$wasReviewed) {
-            $q=$pdo->prepare("UPDATE reports SET status='approved',amount=?,category=? WHERE id=?"); $q->execute([$decision['amount'],$decision['category'],$id]);
-            audit((int)$user['id'],$id,'AI auto-approved',json_encode(['source'=>'Gemini','amount'=>$decision['amount'],'category'=>$decision['category']],JSON_UNESCAPED_UNICODE));
+            $aiResult = json_decode((string)$aiData,true);
+            $summary = is_array($aiResult) && is_string($aiResult['summary'] ?? null) ? clean_ai_text($aiResult['summary'],500) : '';
+            $notes = trim((string)($current['notes'] ?? '')) !== '' ? $current['notes'] : ($summary !== '' ? $summary : null);
+            $q=$pdo->prepare("UPDATE reports SET status='approved',amount=?,category=?,notes=? WHERE id=?"); $q->execute([$decision['amount'],$decision['category'],$notes,$id]);
+            audit((int)$user['id'],$id,'AI auto-approved',json_encode(['source'=>'Gemini','amount'=>$decision['amount'],'category'=>$decision['category'],'notes'=>$notes],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE));
         }
     }
     $pdo->commit();
@@ -71,4 +74,4 @@ try {
     $emailStatus=$outcome ? send_report_email($id,$user,$type,$photos,$outcome['ai_data'],$outcome) : 'failed';
     $q=db()->prepare('UPDATE reports SET email_status=? WHERE id=?'); $q->execute([$emailStatus,$id]);
 } catch (Throwable $ex) { error_log('Could not send or record notification for report ' . $id); }
-flash('Report sent successfully. Thank you!'); redirect('worker.php');
+$_SESSION['worker_submission_success'] = true; flash('Report sent successfully. Thank you!'); redirect('worker.php');

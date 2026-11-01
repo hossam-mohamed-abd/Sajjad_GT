@@ -98,9 +98,79 @@ document.addEventListener('DOMContentLoaded', () => {
     const selected = document.querySelector('#worker-form input[name="type"]:checked');
     if (selected) playActivity(selected.value);
   });
-  if (workerForm) workerForm.addEventListener('submit', event => {
-    if (photoCount() < 1 || photoCount() > 5) { event.preventDefault(); window.alert('Please add between 1 and 5 photos.'); return; }
-    const button = workerForm.querySelector('#photo-preview button[type="submit"]') || workerForm.querySelector('button[type="submit"]');
-    if (button) { button.disabled = true; button.textContent = 'Sending…'; }
-  });
+  const categoryDialog = document.getElementById('category-dialog');
+  const categoryClose = document.getElementById('category-close');
+  const sendingOverlay = document.getElementById('sending-overlay');
+  const successOverlay = document.getElementById('success-overlay');
+  const successDone = document.getElementById('success-done');
+  let submitting = false;
+  let previousFocus = null;
+  if (workerForm && categoryDialog && sendingOverlay) {
+    // Native required validation would stop the submit event before our larger chooser opens.
+    workerForm.querySelectorAll('input[name="type"]').forEach(input => { input.required = false; });
+    const closeCategoryDialog = () => {
+      categoryDialog.hidden = true;
+      document.body.classList.remove('worker-modal-open');
+      if (previousFocus && previousFocus.focus) previousFocus.focus();
+    };
+    if (categoryClose) categoryClose.addEventListener('click', closeCategoryDialog);
+    categoryDialog.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); closeCategoryDialog(); return; }
+      if (event.key === 'Tab') {
+        const buttons = [...categoryDialog.querySelectorAll('button:not([disabled])')];
+        if (!buttons.length) return;
+        const first=buttons[0], last=buttons[buttons.length-1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    });
+    categoryDialog.querySelectorAll('[data-activity]').forEach(choice => {
+      choice.addEventListener('click', () => {
+        const radio = [...workerForm.querySelectorAll('input[name="type"]')].find(input => input.value === choice.dataset.activity);
+        if (!radio || submitting) return;
+        radio.checked = true;
+        radio.dispatchEvent(new Event('change', { bubbles: true }));
+        closeCategoryDialog();
+        if (workerForm.requestSubmit) workerForm.requestSubmit();
+        else {
+          const submit = workerForm.querySelector('#photo-preview button[type="submit"]') || workerForm.querySelector('button[type="submit"]');
+          if (submit) submit.click();
+        }
+      });
+    });
+    workerForm.addEventListener('submit', event => {
+      if (submitting) { event.preventDefault(); return; }
+      if (photoCount() < 1 || photoCount() > 5) { event.preventDefault(); window.alert('Please add between 1 and 5 photos.'); return; }
+      if (!workerForm.querySelector('input[name="type"]:checked')) {
+        event.preventDefault();
+        previousFocus = document.activeElement;
+        categoryDialog.hidden = false;
+        document.body.classList.add('worker-modal-open');
+        const firstChoice = categoryDialog.querySelector('[data-activity]');
+        if (firstChoice) firstChoice.focus();
+        return;
+      }
+      submitting = true;
+      sendingOverlay.hidden = false;
+      document.body.classList.add('worker-modal-open');
+      sendingOverlay.focus();
+      const button = workerForm.querySelector('#photo-preview button[type="submit"]') || workerForm.querySelector('button[type="submit"]');
+      if (button) { button.disabled = true; button.textContent = 'Sending…'; }
+    });
+  } else if (workerForm) {
+    // Fallback if the optional overlays are unavailable.
+    workerForm.addEventListener('submit', event => {
+      if (photoCount() < 1 || photoCount() > 5) { event.preventDefault(); window.alert('Please add between 1 and 5 photos.'); }
+    });
+  }
+  if (successOverlay && successDone) {
+    document.body.classList.add('worker-modal-open');
+    successDone.focus();
+    successDone.addEventListener('click', event => {
+      event.preventDefault();
+      successOverlay.hidden = true;
+      document.body.classList.remove('worker-modal-open');
+    });
+  }
+
 });
